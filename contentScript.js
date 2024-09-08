@@ -1,55 +1,95 @@
-(() => {
-    let youtubeLeftControls, youtubePlayer;
-    let currentVideo = "";
-    let currentVideoBookmarks = [];
+let blocked = false;
+let leetCodeUserName = localStorage.getItem("leetCodeUserName") ?? "";
+let userQuestion = '';
+let seenQuestions = [];
 
-    chrome.runtime.onMessage.addListener((obj, sender, response) => {
-        const { type, value, videoId } = obj;
+const setMinuteTimer = (duration) => {
+    let timer = duration, minutes, seconds;
+    const interval = setInterval(() => {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
 
-        if (type === "NEW") {
-            currentVideo = videoId;
-            newVideoLoaded();
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+        console.log(`${minutes}:${seconds}`);
+
+        if (--timer < 0) {
+            clearInterval(interval);
+            console.log("Timer finished");
+            blocked = true;
+
+            document.body.innerHTML = `
+                <div style="height: 100vh; width: 100vw; background-color: #2D3FFF; display: flex; justify-content: center; align-items: center; text-align: center; flex-direction: column;">
+                    <h1 style="color: #FFFFFF; font-size: 5rem;">It's time to leetcode!!</h1>
+                    <h2 style="color: #FFFFFF; font-size: 3rem;">Go solve this question: ${userQuestion}</h2>
+                    <button id="unblockButton" style="margin-top: 5vh; padding: 2vw; background-color: #FFFFFF; color: black;">Solved it!</button>
+                </div>
+            `;
+
+            document.getElementById('unblockButton').addEventListener('click', () => {
+                checkIfSolved();
+            });
         }
-    });
-
-    const newVideoLoaded = () => {
-        const bookmarkBtnExists = document.getElementsByClassName("bookmark-btn")[0];
-        console.log(bookmarkBtnExists);
-
-        if (!bookmarkBtnExists) {
-            const bookmarkBtn = document.createElement("img");
-
-            bookmarkBtn.src = chrome.runtime.getURL("assets/bookmark.png");
-            bookmarkBtn.className = "ytp-button " + "bookmark-btn";
-            bookmarkBtn.title = "Click to bookmark current timestamp";
-
-            youtubeLeftControls = document.getElementsByClassName("ytp-left-controls")[0];
-            youtubePlayer = document.getElementsByClassName("video-stream")[0];
-            
-            youtubeLeftControls.append(bookmarkBtn);
-            bookmarkBtn.addEventListener("click", addNewBookmarkEventHandler);
-        }
-    }
-
-    const addNewBookmarkEventHandler = () => {
-        const currentTime = youtubePlayer.currentTime;
-        const newBookmark = {
-            time: currentTime,
-            desc: "Bookmark at " + getTime(currentTime),
-        };
-        console.log(newBookmark);
-
-        chrome.storage.sync.set({
-            [currentVideo]: JSON.stringify([...currentVideoBookmarks, newBookmark].sort((a, b) => a.time - b.time))
-        });
-    }
-
-    newVideoLoaded();
-})();
-
-const getTime = t => {
-    var date = new Date(0);
-    date.setSeconds(1);
-
-    return date.toISOString().substr(11, 0);
+    }, 1000);
 }
+
+const checkIfSolved = () => {
+    fetch(`https://alfa-leetcode-api.onrender.com/${leetCodeUserName}/submission?limit=5`)
+        .then(response => response.json())
+        .then(data => {
+            console.log("list of submissions: ", data);
+            if (data.submission[0].title === userQuestion) {
+                blocked = false;
+                document.body.innerHTML = ''; 
+                location.reload();
+            } else {
+                const errorMessage = document.createElement('h1');
+                errorMessage.textContent = `Sorry, your last submission didn't match: ${data.submission[0].title}`;
+                document.body.appendChild(errorMessage);
+            }
+        })
+        .catch(error => alert("Error checking: ", error));
+}
+
+const loadLeetCodeInfo = async () => {
+    console.log("loading questions");
+    fetch('https://alfa-leetcode-api.onrender.com/problems')
+        .then(response => response.json())
+        .then(data => {
+            console.log("list of problems: ", data);
+
+            let questionOptions = data.problemsetQuestionList.filter(question => question.difficulty === "Medium");
+            getRandomQuestion(questionOptions);
+        })
+        .catch(error => {
+            alert("Error: ", error);
+        });
+    console.log("done");
+}
+
+const getRandomQuestion = (questionOptions) => {
+    let index = Math.floor(Math.random() * questionOptions.length);
+    let question = questionOptions[index].title;
+
+    if (seenQuestions.includes(question)) {
+        getRandomQuestion(questionOptions);
+    } else {
+        console.log(userQuestion);
+        userQuestion = question;
+        seenQuestions = [...seenQuestions, question];
+    }
+}
+
+(async () => {
+    if (leetCodeUserName === "") {
+        leetCodeUserName = window.prompt("Please Enter Your LeetCode User Name: ");
+        localStorage.setItem("leetCodeUserName", leetCodeUserName);
+    }
+
+    console.log("timer started");
+    await loadLeetCodeInfo();
+
+    if (!blocked) {
+        setMinuteTimer(.1 * 60);
+    }
+})();
