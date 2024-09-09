@@ -90,6 +90,6 @@ const getRandomQuestion = (questionOptions) => {
     await loadLeetCodeInfo();
 
     if (!blocked) {
-        setMinuteTimer(.1 * 60);
+        setMinuteTimer(60 * 60);
     }
 })();
